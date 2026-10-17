@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kadın Sesi Değiştirici</title>
+<style>
+  :root{
+    --bg:#f6f4f8; --card:#ffffff; --text:#1d1a22; --muted:#6b6475;
+    --accent:#c2417a; --accent-2:#f3d6e4; --line:#e4dfe9; --ok:#2f9e6b; --warn:#c77a12;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#141118; --card:#1e1a24; --text:#f1edf5; --muted:#a59cb0;
+      --accent:#ff7ab3; --accent-2:#3a2433; --line:#2e2836; --ok:#4fd19a; --warn:#f0a63a;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:720px;margin:0 auto;padding:24px 16px 48px}
+  h1{font-size:24px;margin:0 0 4px}
+  .sub{color:var(--muted);margin:0 0 20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+  .card h2{font-size:15px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  label{display:block;font-weight:600;margin:12px 0 6px}
+  select,button{font:inherit}
+  select{width:100%;padding:9px 10px;border-radius:9px;border:1px solid var(--line);
+    background:var(--bg);color:var(--text)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  button{border:0;border-radius:10px;padding:11px 18px;cursor:pointer;font-weight:600}
+  .primary{background:var(--accent);color:#fff}
+  .primary.on{background:var(--muted)}
+  .ghost{background:var(--accent-2);color:var(--text)}
+  .ghost.sel{outline:2px solid var(--accent)}
+  .slider{margin-top:14px}
+  .slider .top{display:flex;justify-content:space-between;font-weight:600}
+  .slider .val{color:var(--accent);font-variant-numeric:tabular-nums}
+  .slider small{display:block;color:var(--muted);font-weight:400}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .toggle{display:flex;align-items:center;gap:10px;margin-top:12px;font-weight:600}
+  .toggle input{width:18px;height:18px;accent-color:var(--accent)}
+  .meter{height:10px;border-radius:6px;background:var(--line);overflow:hidden;margin-top:6px}
+  .meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ok),var(--warn),var(--accent));transition:width .06s}
+  .status{color:var(--muted);font-size:14px;margin-top:10px}
+  .status b{color:var(--text)}
+  .hint{color:var(--muted);font-size:13px;margin-top:6px}
+  details{margin-top:8px}
+  summary{cursor:pointer;font-weight:600}
+  details ol{padding-left:20px;margin:8px 0}
+  code{background:var(--accent-2);padding:1px 5px;border-radius:5px}
+  .err{color:#e0435a;font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Kadın Sesi Değiştirici</h1>
+  <p class="sub">Mikrofonunu gerçek zamanlı kadın sesine çevirir. Sanal ses kablosuyla Discord, Zoom, oyunlar gibi tüm uygulamalarda kullanılabilir.</p>
+
+  <div class="card">
+    <h2>Cihazlar</h2>
+    <label for="micSel">Mikrofon (giriş)</label>
+    <select id="micSel"><option value="">Varsayılan mikrofon</option></select>
+
+    <label for="outSel">Çıkış (sanal kabloyu seç)</label>
+    <select id="outSel"><option value="">Varsayılan hoparlör</option></select>
+    <div class="hint" id="outHint">Cihaz adları mikrofon izni verildikten sonra görünür. Diğer uygulamalara göndermek için "CABLE Input" / "BlackHole" seç.</div>
+
+    <div class="row" style="margin-top:16px">
+      <button class="primary" id="startBtn">Başlat</button>
+      <span class="status" id="status">Durduruldu</span>
+    </div>
+    <label style="margin-top:14px">Giriş seviyesi</label>
+    <div class="meter"><i id="meter"></i></div>
+  </div>
+
+  <div class="card">
+    <h2>Ses ayarları</h2>
+    <div class="row" id="presets">
+      <button class="ghost" data-p="7"  data-f="116" data-b="3">Doğal</button>
+      <button class="ghost" data-p="9"  data-f="120" data-b="4">Genç</button>
+      <button class="ghost" data-p="5"  data-f="111" data-b="2">Olgun / kalın</button>
+    </div>
+
+    <div class="slider">
+      <div class="top"><span>Perde (pitch)</span><span class="val" id="pitchVal"></span></div>
+      <input type="range" id="pitch" min="0" max="12" step="0.5" value="7">
+      <small>Ses telinin titreşimi. Erkek → kadın için genelde +5 ile +9 yarım ton.</small>
+    </div>
+    <div class="slider">
+      <div class="top"><span>Formant (tını)</span><span class="val" id="formantVal"></span></div>
+      <input type="range" id="formant" min="90" max="135" step="1" value="116">
+      <small>Ağız/gırtlak rezonansı. Gerçekçiliğin anahtarı: %112–120 arası. Fazlası çizgi film sesi yapar.</small>
+    </div>
+    <div class="slider">
+      <div class="top"><span>Parlaklık</span><span class="val" id="brightVal"></span></div>
+      <input type="range" id="bright" min="0" max="9" step="0.5" value="3">
+      <small>Tiz frekansları hafif yükseltir, sesi daha "açık" yapar.</small>
+    </div>
+    <div class="slider">
+      <div class="top"><span>Gürültü kapısı</span><span class="val" id="gateVal"></span></div>
+      <input type="range" id="gate" min="-80" max="-20" step="1" value="-52">
+      <small>Konuşmadığında arka plan sesini keser. Sesin kesik kesik geliyorsa düşür.</small>
+    </div>
+    <div class="slider">
+      <div class="top"><span>Çıkış seviyesi</span><span class="val" id="volVal"></span></div>
+      <input type="range" id="vol" min="0" max="200" step="5" value="100">
+    </div>
+
+    <div class="toggle"><input type="checkbox" id="nsChk" checked><label for="nsChk" style="margin:0">Tarayıcı gürültü engelleme</label></div>
+    <div class="toggle"><input type="checkbox" id="monChk"><label for="monChk" style="margin:0">Kendimi duy (kulaklıkla kullan)</label></div>
+    <div class="toggle"><input type="checkbox" id="bypassChk"><label for="bypassChk" style="margin:0">Efekti kapat (karşılaştırma için)</label></div>
+  </div>
+
+  <div class="card">
+    <h2>Kurulum</h2>
+    <details>
+      <summary>Windows</summary>
+      <ol>
+        <li><b>VB-Audio Virtual Cable</b> indir ve yönetici olarak kur, bilgisayarı yeniden başlat.</li>
+        <li>Bu sayfada Çıkış olarak <code>CABLE Input</code> seç.</li>
+        <li>Discord / Zoom / oyunda mikrofon olarak <code>CABLE Output</code> seç.</li>
+      </ol>
+    </details>
+    <details>
+      <summary>macOS</summary>
+      <ol>
+        <li><b>BlackHole 2ch</b> kur.</li>
+        <li>Bu sayfada Çıkış olarak <code>BlackHole 2ch</code> seç.</li>
+        <li>Diğer uygulamada mikrofon olarak <code>BlackHole 2ch</code> seç.</li>
+        <li>Not: Safari çıkış cihazı seçemez, Chrome kullan.</li>
+      </ol>
+    </details>
+    <details>
+      <summary>Linux</summary>
+      <ol>
+        <li>Terminal: <code>pactl load-module module-null-sink sink_name=kadinses</code></li>
+        <li>Bu sayfada çıkış olarak <code>Null Output</code> seç.</li>
+        <li>Diğer uygulamada mikrofon olarak <code>Monitor of Null Output</code> seç.</li>
+      </ol>
+    </details>
+    <p class="hint">İpuçları: Chrome veya Edge kullan. Sekme açık kalmalı (arka planda çalışır). Kulaklık kullan, yoksa hoparlör sesi mikrofona geri döner. Biraz daha yüksek perdeden ve melodik konuşmak gerçekçiliği çok artırır.</p>
+  </div>
+</div>
+
+<audio id="outAudio" autoplay></audio>
+
+<script>
+// ---------------- AudioWorklet: faz vokoderi + formant kaydırma ----------------
+const WORKLET_CODE = `
+class FFT {
+  constructor(n){
+    this.n = n;
+    const bits = Math.log2(n);
+    this.rev = new Uint32Array(n);
+    for (let i = 0; i < n; i++) { let r = 0, x = i; for (let b = 0; b < bits; b++) { r = (r << 1) | (x & 1); x >>= 1; } this.rev[i] = r; }
+    this.cos = new Float64Array(n / 2); this.sin = new Float64Array(n / 2);
+    for (let i = 0; i < n / 2; i++) { this.cos[i] = Math.cos(2 * Math.PI * i / n); this.sin[i] = Math.sin(2 * Math.PI * i / n); }
+  }
+  transform(re, im, inverse){
+    const n = this.n, rev = this.rev;
+    for (let i = 0; i < n; i++) { const j = rev[i]; if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+    const sign = inverse ? 1 : -1;
+    for (let size = 2; size <= n; size <<= 1) {
+      const half = size >> 1, step = n / size;
+      for (let i = 0; i < n; i += size) {
+        for (let j = 0, k = 0; j < half; j++, k += step) {
+          const wr = this.cos[k], wi = sign * this.sin[k];
+          const a = i + j, b = a + half;
+          const tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
+          re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+        }
+      }
+    }
+  }
+}
+
+class PitchShifter {
+  constructor(N, osamp, sr){
+    this.N = N; this.osamp = osamp; this.sr = sr;
+    this.hop = N / osamp; this.latency = N - this.hop; this.M = N / 2 + 1;
+    this.fft = new FFT(N);
+    this.inFIFO = new Float32Array(N); this.outFIFO = new Float32Array(N);
+    this.accum = new Float64Array(2 * N);
+    this.re = new Float64Array(N); this.im = new Float64Array(N);
+    const M = this.M;
+    this.lastPhase = new Float64Array(M); this.sumPhase = new Float64Array(M);
+    this.anaMag = new Float64Array(M); this.anaFreq = new Float64Array(M);
+    this.synMag = new Float64Array(M); this.synFreq = new Float64Array(M);
+    this.env = new Float64Array(M); this.tmp = new Float64Array(M); this.prefix = new Float64Array(M + 1);
+    this.win = new Float64Array(N);
+    for (let i = 0; i < N; i++) this.win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+    this.rover = this.latency;
+    this.freqPerBin = sr / N; this.expct = 2 * Math.PI * this.hop / N;
+    this.envHalf = Math.max(2, Math.round(160 / this.freqPerBin));
+    this.pitch = 1; this.formant = 1;
+  }
+  smooth(src, dst, h){
+    const M = this.M, p = this.prefix; p[0] = 0;
+    for (let i = 0; i < M; i++) p[i + 1] = p[i] + src[i];
+    for (let i = 0; i < M; i++) { const a = i - h < 0 ? 0 : i - h, b = i + h > M - 1 ? M - 1 : i + h; dst[i] = (p[b + 1] - p[a]) / (b - a + 1); }
+  }
+  envAt(pos){
+    const M = this.M;
+    if (pos <= 0) return this.env[0];
+    if (pos >= M - 1) return this.env[M - 1];
+    const i = pos | 0, f = pos - i;
+    return this.env[i] * (1 - f) + this.env[i + 1] * f;
+  }
+  frame(){
+    const N = this.N, M = this.M, re = this.re, im = this.im, PI = Math.PI, TWO_PI = 2 * PI;
+    const osamp = this.osamp, fpb = this.freqPerBin, expct = this.expct;
+    const pitch = this.pitch, formant = this.formant;
+    for (let k = 0; k < N; k++) { re[k] = this.inFIFO[k] * this.win[k]; im[k] = 0; }
+    this.fft.transform(re, im, false);
+    for (let k = 0; k < M; k++) {
+      const r = re[k], i = im[k];
+      const mag = 2 * Math.sqrt(r * r + i * i), phase = Math.atan2(i, r);
+      let tmp = phase - this.lastPhase[k]; this.lastPhase[k] = phase;
+      tmp -= k * expct;
+      let qpd = Math.trunc(tmp / PI);
+      if (qpd >= 0) qpd += qpd & 1; else qpd -= qpd & 1;
+      tmp -= PI * qpd;
+      tmp = osamp * tmp / TWO_PI;
+      this.anaMag[k] = mag; this.anaFreq[k] = k * fpb + tmp * fpb;
+    }
+    // spektral zarf (formantlar)
+    this.smooth(this.anaMag, this.tmp, this.envHalf);
+    this.smooth(this.tmp, this.env, this.envHalf);
+    this.synMag.fill(0); this.synFreq.fill(0);
+    for (let k = 0; k < M; k++) {
+      const idx = Math.round(k * pitch);
+      if (idx >= M) break;
+      const flat = this.anaMag[k] / (this.env[k] + 1e-9);
+      this.synMag[idx] += flat * this.envAt(idx / formant);
+      this.synFreq[idx] = this.anaFreq[k] * pitch;
+    }
+    for (let k = 0; k < M; k++) {
+      let tmp = (this.synFreq[k] - k * fpb) / fpb;
+      tmp = TWO_PI * tmp / osamp + k * expct;
+      let s = this.sumPhase[k] + tmp;
+      s -= TWO_PI * Math.floor(s / TWO_PI);
+      this.sumPhase[k] = s;
+      re[k] = this.synMag[k] * Math.cos(s); im[k] = this.synMag[k] * Math.sin(s);
+    }
+    for (let k = M; k < N; k++) { re[k] = 0; im[k] = 0; }
+    this.fft.transform(re, im, true);
+    const scale = 2 / ((N / 2) * osamp);
+    for (let k = 0; k < N; k++) this.accum[k] += this.win[k] * re[k] * scale;
+    for (let k = 0; k < this.hop; k++) this.outFIFO[k] = this.accum[k];
+    this.accum.copyWithin(0, this.hop, this.hop + N);
+    this.accum.fill(0, N);
+    this.inFIFO.copyWithin(0, this.hop, N);
+  }
+  process(input, output){
+    const lat = this.latency;
+    for (let i = 0; i < input.length; i++) {
+      this.inFIFO[this.rover] = input[i];
+      output[i] = this.outFIFO[this.rover - lat];
+      this.rover++;
+      if (this.rover >= this.N) { this.rover = lat; this.frame(); }
+    }
+  }
+}
+
+class FemaleVoiceProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors(){
+    return [
+      { name: 'pitch',   defaultValue: 1.5,  minValue: 0.5, maxValue: 2.5, automationRate: 'k-rate' },
+      { name: 'formant', defaultValue: 1.16, minValue: 0.7, maxValue: 1.6, automationRate: 'k-rate' },
+      { name: 'bypass',  defaultValue: 0,    minValue: 0,   maxValue: 1,   automationRate: 'k-rate' },
+      { name: 'gate',    defaultValue: -52,  minValue: -100, maxValue: 0,  automationRate: 'k-rate' }
+    ];
+  }
+  constructor(){
+    super();
+    this.ps = new PitchShifter(2048, 4, sampleRate);
+    this.g = 0; this.hold = 0; this.blocks = 0; this.peakDb = -100;
+    this.holdSamples = Math.round(0.25 * sampleRate);
+  }
+  process(inputs, outputs, params){
+    const out = outputs[0];
+    if (!out || !out.length) return true;
+    const o = out[0];
+    const inp = inputs[0];
+    if (!inp || !inp.length) { for (const ch of out) ch.fill(0); return true; }
+    const x = inp[0];
+    let s = 0; for (let i = 0; i < x.length; i++) s += x[i] * x[i];
+    const db = 10 * Math.log10(s / x.length + 1e-12);
+    if (db > this.peakDb) this.peakDb = db;
+    if (db > params.gate[0]) this.hold = this.holdSamples; else this.hold = Math.max(0, this.hold - x.length);
+    const target = this.hold > 0 ? 1 : 0;
+
+    if (params.bypass[0] >= 0.5) {
+      o.set(x);
+    } else {
+      this.ps.pitch = params.pitch[0];
+      this.ps.formant = params.formant[0];
+      this.ps.process(x, o);
+    }
+    let g = this.g;
+    const coef = target > g ? 0.01 : 0.0015;
+    for (let i = 0; i < o.length; i++) { g += (target - g) * coef; o[i] *= g; }
+    this.g = g;
+    for (let c = 1; c < out.length; c++) out[c].set(o);
+
+    if (++this.blocks >= 8) { this.port.postMessage(this.peakDb); this.blocks = 0; this.peakDb = -100; }
+    return true;
+  }
+}
+registerProcessor('female-voice', FemaleVoiceProcessor);
+`;
+
+// ---------------- Arayüz ve ses zinciri ----------------
+const $ = id => document.getElementById(id);
+const els = {
+  mic: $('micSel'), out: $('outSel'), start: $('startBtn'), status: $('status'), meter: $('meter'),
+  pitch: $('pitch'), formant: $('formant'), bright: $('bright'), gate: $('gate'), vol: $('vol'),
+  ns: $('nsChk'), mon: $('monChk'), bypass: $('bypassChk'), audio: $('outAudio'), outHint: $('outHint')
+};
+
+let ctx = null, stream = null, src = null, node = null, preHP, postHP, shelf, outGain, monGain, dest;
+let running = false;
+
+const semis = () => parseFloat(els.pitch.value);
+function updateLabels(){
+  $('pitchVal').textContent = '+' + semis() + ' yarım ton';
+  $('formantVal').textContent = '%' + els.formant.value;
+  $('brightVal').textContent = '+' + els.bright.value + ' dB';
+  $('gateVal').textContent = els.gate.value + ' dB';
+  $('volVal').textContent = '%' + els.vol.value;
+}
+function applyParams(){
+  updateLabels();
+  if (!node) return;
+  const t = ctx.currentTime;
+  node.parameters.get('pitch').setValueAtTime(Math.pow(2, semis() / 12), t);
+  node.parameters.get('formant').setValueAtTime(parseFloat(els.formant.value) / 100, t);
+  node.parameters.get('gate').setValueAtTime(parseFloat(els.gate.value), t);
+  node.parameters.get('bypass').setValueAtTime(els.bypass.checked ? 1 : 0, t);
+  shelf.gain.setTargetAtTime(els.bypass.checked ? 0 : parseFloat(els.bright.value), t, 0.05);
+  postHP.frequency.setTargetAtTime(els.bypass.checked ? 20 : 140, t, 0.05);
+  outGain.gain.setTargetAtTime(parseFloat(els.vol.value) / 100, t, 0.05);
+  monGain.gain.setTargetAtTime(els.mon.checked ? 1 : 0, t, 0.05);
+}
+['pitch','formant','bright','gate','vol'].forEach(k => els[k].addEventListener('input', () => { clearPresetSel(); applyParams(); }));
+['mon','bypass'].forEach(k => els[k].addEventListener('change', applyParams));
+
+function clearPresetSel(){ document.querySelectorAll('#presets button').forEach(b => b.classList.remove('sel')); }
+document.querySelectorAll('#presets button').forEach(b => b.addEventListener('click', () => {
+  els.pitch.value = b.dataset.p; els.formant.value = b.dataset.f; els.bright.value = b.dataset.b;
+  applyParams(); clearPresetSel(); b.classList.add('sel');
+}));
+
+async function listDevices(){
+  const devs = await navigator.mediaDevices.enumerateDevices();
+  const fill = (sel, kind, defLabel) => {
+    const cur = sel.value;
+    sel.innerHTML = '';
+    sel.add(new Option(defLabel, ''));
+    devs.filter(d => d.kind === kind && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications')
+        .forEach(d => sel.add(new Option(d.label || (kind + ' ' + sel.length), d.deviceId)));
+    if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  };
+  fill(els.mic, 'audioinput', 'Varsayılan mikrofon');
+  fill(els.out, 'audiooutput', 'Varsayılan hoparlör');
+  if (!('setSinkId' in HTMLMediaElement.prototype)) {
+    els.out.disabled = true;
+    els.outHint.innerHTML = '<span class="err">Bu tarayıcı çıkış cihazı seçemiyor. Chrome veya Edge kullan.</span>';
+  }
+}
+
+async function openMic(){
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({ audio: {
+    deviceId: els.mic.value ? { exact: els.mic.value } : undefined,
+    echoCancellation: false, autoGainControl: false, noiseSuppression: els.ns.checked, channelCount: 1
+  }});
+  if (src) src.disconnect();
+  src = ctx.createMediaStreamSource(stream);
+  src.connect(preHP);
+}
+
+async function setOutput(){
+  if (!('setSinkId' in els.audio)) return;
+  try { await els.audio.setSinkId(els.out.value || ''); }
+  catch (e) { setStatus('Çıkış cihazı ayarlanamadı: ' + e.message, true); }
+}
+
+function setStatus(msg, err){ els.status.innerHTML = err ? '<span class="err">' + msg + '</span>' : msg; }
+
+// Worklet'i sırayla 3 yolla yüklemeyi dener (bazı tarayıcılar blob adreslerini engeller)
+async function loadWorklet(ctx){
+  const attempts = [
+    () => 'data:text/javascript;charset=utf-8,' + encodeURIComponent(WORKLET_CODE),
+    () => URL.createObjectURL(new Blob([WORKLET_CODE], { type: 'text/javascript' })),
+    () => 'voice-worklet.js'
+  ];
+  let lastErr;
+  for (const make of attempts) {
+    try { await ctx.audioWorklet.addModule(make()); return; }
+    catch (e) { lastErr = e; console.warn('Worklet yüklenemedi, sonraki yol deneniyor:', e); }
+  }
+  throw new Error('Ses modülü yüklenemedi. Sayfayı bilgisayarda Chrome veya Edge ile, GitHub Pages (https) adresinden aç. (' + (lastErr && lastErr.message) + ')');
+}
+
+// Yedek mod: AudioWorklet engellenirse aynı ses işleme kodunu ScriptProcessor ile çalıştırır
+function makeFallbackNode(ctx){
+  let Proc;
+  const port = { onmessage: null, postMessage(d){ if (port.onmessage) port.onmessage({ data: d }); } };
+  const Base = class { constructor(){ this.port = port; } };
+  new Function('AudioWorkletProcessor', 'registerProcessor', 'sampleRate', WORKLET_CODE)(Base, (n, c) => { Proc = c; }, ctx.sampleRate);
+  const proc = new Proc();
+  const vals = {};
+  Proc.parameterDescriptors.forEach(d => { vals[d.name] = [d.defaultValue]; });
+  const sp = ctx.createScriptProcessor(1024, 1, 2);
+  sp.onaudioprocess = e => {
+    const x = e.inputBuffer.getChannelData(0);
+    const L = e.outputBuffer.getChannelData(0), R = e.outputBuffer.getChannelData(1);
+    for (let i = 0; i < x.length; i += 128) {
+      proc.process([[x.subarray(i, i + 128)]], [[L.subarray(i, i + 128), R.subarray(i, i + 128)]], vals);
+    }
+  };
+  sp.parameters = { get: n => ({ setValueAtTime: v => { vals[n][0] = v; } }) };
+  sp.port = port;
+  return sp;
+}
+
+async function start(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStatus('Bu tarayıcı desteklenmiyor. Bilgisayarda Chrome veya Edge kullan.', true);
+    return;
+  }
+  try {
+    ctx = new AudioContext({ latencyHint: 'interactive' });
+    let mode = '';
+    try {
+      await loadWorklet(ctx);
+      node = new AudioWorkletNode(ctx, 'female-voice', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+    } catch (we) {
+      console.warn('AudioWorklet kullanılamıyor, yedek moda geçiliyor:', we);
+      node = makeFallbackNode(ctx);
+      mode = ' · uyumluluk modu';
+    }
+    node.port.onmessage = e => {
+      const pct = Math.max(0, Math.min(100, (e.data + 70) / 70 * 100));
+      els.meter.style.width = pct + '%';
+    };
+    preHP = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 75, Q: 0.7 });
+    postHP = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 140, Q: 0.7 });
+    shelf = new BiquadFilterNode(ctx, { type: 'highshelf', frequency: 5000, gain: 3 });
+    outGain = new GainNode(ctx, { gain: 1 });
+    monGain = new GainNode(ctx, { gain: 0 });
+    dest = ctx.createMediaStreamDestination();
+
+    preHP.connect(node).connect(postHP).connect(shelf).connect(outGain);
+    outGain.connect(dest);
+    outGain.connect(monGain).connect(ctx.destination);
+
+    await openMic();
+    await listDevices();
+    els.audio.srcObject = dest.stream;
+    await setOutput();
+    await els.audio.play();
+    await ctx.resume();
+    applyParams();
+
+    running = true;
+    els.start.textContent = 'Durdur'; els.start.classList.add('on');
+    const latMs = Math.round((1536 / ctx.sampleRate + (ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000);
+    setStatus('<b>Çalışıyor</b> · ' + ctx.sampleRate + ' Hz · ~' + latMs + ' ms gecikme' + mode);
+  } catch (e) {
+    console.error(e);
+    setStatus('Hata: ' + (e.name === 'NotAllowedError' ? 'Mikrofon izni verilmedi.' : e.message), true);
+    stop();
+  }
+}
+
+function stop(){
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; src = null; node = null;
+  els.audio.pause(); els.audio.srcObject = null;
+  if (ctx) ctx.close(); ctx = null;
+  els.meter.style.width = '0';
+  els.start.textContent = 'Başlat'; els.start.classList.remove('on');
+  if (!els.status.querySelector('.err')) setStatus('Durduruldu');
+}
+
+els.start.addEventListener('click', () => running ? stop() : start());
+els.mic.addEventListener('change', () => { if (running) openMic().catch(e => setStatus(e.message, true)); });
+els.ns.addEventListener('change', () => { if (running) openMic().catch(e => setStatus(e.message, true)); });
+els.out.addEventListener('change', setOutput);
+navigator.mediaDevices?.addEventListener?.('devicechange', () => { if (running) listDevices(); });
+
+if (!window.isSecureContext) setStatus('Bu sayfa HTTPS üzerinden açılmalı (GitHub Pages uygundur).', true);
+updateLabels();
+</script>
+</body>
+</html>
