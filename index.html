@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Alaz Oflaz Ses Değiştirici Uygulaması</title>
+<title>Alazın Ses Değiştiricisi</title>
 <style>
   :root{
     --bg:#f6f4f8; --card:#ffffff; --text:#1d1a22; --muted:#6b6475;
@@ -77,10 +77,10 @@
   <div class="card">
     <h2>Ses ayarları</h2>
     <div class="row" id="presets">
-      <button class="ghost" data-p="7"  data-f="116" data-b="3">Doğal</button>
-      <button class="ghost" data-p="9"  data-f="120" data-b="4">Genç</button>
-      <button class="ghost" data-p="5"  data-f="111" data-b="2">Olgun / kalın</button>
-      <button class="ghost" data-p="13" data-f="119" data-b="1">Arkadaşımın sesi</button>
+      <button class="ghost" data-p="7"  data-f="116" data-b="3" data-n="25">Doğal</button>
+      <button class="ghost" data-p="9"  data-f="120" data-b="4" data-n="30">Genç</button>
+      <button class="ghost" data-p="5"  data-f="111" data-b="2" data-n="20">Olgun / kalın</button>
+      <button class="ghost" data-p="13" data-f="119" data-b="1" data-n="30">Arkadaşımın sesi</button>
     </div>
 
     <div class="slider">
@@ -97,6 +97,11 @@
       <div class="top"><span>Parlaklık</span><span class="val" id="brightVal"></span></div>
       <input type="range" id="bright" min="0" max="9" step="0.5" value="3">
       <small>Tiz frekansları hafif yükseltir, sesi daha "açık" yapar.</small>
+    </div>
+    <div class="slider">
+      <div class="top"><span>Nefes</span><span class="val" id="breathVal"></span></div>
+      <input type="range" id="breath" min="0" max="100" step="5" value="25">
+      <small>Kadın seslerindeki hafif hava/nefes tınısını ekler, sesi daha canlı yapar. Fazlası fısıltı gibi duyulur.</small>
     </div>
     <div class="slider">
       <div class="top"><span>Gürültü kapısı</span><span class="val" id="gateVal"></span></div>
@@ -189,6 +194,9 @@ class PitchShifter {
     this.anaMag = new Float64Array(M); this.anaFreq = new Float64Array(M);
     this.synMag = new Float64Array(M); this.synFreq = new Float64Array(M);
     this.env = new Float64Array(M); this.tmp = new Float64Array(M); this.prefix = new Float64Array(M + 1);
+    this.anaPhase = new Float64Array(M); this.outPh = new Float64Array(M);
+    this.peakOf = new Int32Array(M); this.peaks = new Int32Array(M);
+    this.breath = 0;
     this.win = new Float64Array(N);
     for (let i = 0; i < N; i++) this.win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
     this.rover = this.latency;
@@ -211,7 +219,7 @@ class PitchShifter {
   frame(){
     const N = this.N, M = this.M, re = this.re, im = this.im, PI = Math.PI, TWO_PI = 2 * PI;
     const osamp = this.osamp, fpb = this.freqPerBin, expct = this.expct;
-    const pitch = this.pitch, formant = this.formant;
+    const pitch = this.pitch, formant = this.formant, breath = this.breath;
     for (let k = 0; k < N; k++) { re[k] = this.inFIFO[k] * this.win[k]; im[k] = 0; }
     this.fft.transform(re, im, false);
     for (let k = 0; k < M; k++) {
@@ -223,11 +231,20 @@ class PitchShifter {
       if (qpd >= 0) qpd += qpd & 1; else qpd -= qpd & 1;
       tmp -= PI * qpd;
       tmp = osamp * tmp / TWO_PI;
-      this.anaMag[k] = mag; this.anaFreq[k] = k * fpb + tmp * fpb;
+      this.anaMag[k] = mag; this.anaFreq[k] = k * fpb + tmp * fpb; this.anaPhase[k] = phase;
     }
     // spektral zarf (formantlar)
     this.smooth(this.anaMag, this.tmp, this.envHalf);
     this.smooth(this.tmp, this.env, this.envHalf);
+    // tepe noktaları (faz kilitleme için): her bin en yakın harmoniğe bağlanır
+    const A = this.anaMag, pk = this.peaks, peakOf = this.peakOf;
+    let np = 0;
+    for (let k = 2; k < M - 2; k++) {
+      const m = A[k];
+      if (m > A[k - 1] && m >= A[k + 1] && m > A[k - 2] && m >= A[k + 2]) pk[np++] = k;
+    }
+    if (np === 0) peakOf.fill(-1);
+    else { let pi = 0; for (let k = 0; k < M; k++) { while (pi < np - 1 && Math.abs(pk[pi + 1] - k) <= Math.abs(pk[pi] - k)) pi++; peakOf[k] = pk[pi]; } }
     this.synMag.fill(0); this.synFreq.fill(0);
     for (let k = 0; k < M; k++) {
       const idx = Math.round(k * pitch);
@@ -242,7 +259,29 @@ class PitchShifter {
       let s = this.sumPhase[k] + tmp;
       s -= TWO_PI * Math.floor(s / TWO_PI);
       this.sumPhase[k] = s;
-      re[k] = this.synMag[k] * Math.cos(s); im[k] = this.synMag[k] * Math.sin(s);
+    }
+    // faz kilitleme: harmonik çevresindeki binler tepe ile aynı faz ilişkisini korur (metalik/yankılı sesi azaltır)
+    const outPh = this.outPh;
+    outPh.set(this.sumPhase);
+    for (let k = 0; k < M; k++) {
+      const p = peakOf[k];
+      if (p < 0 || p === k) continue;
+      const j = Math.round(k * pitch), jp = Math.round(p * pitch);
+      if (j >= M || jp >= M || j === jp) continue;
+      outPh[j] = this.sumPhase[jp] + this.anaPhase[k] - this.anaPhase[p];
+    }
+    for (let k = 0; k < M; k++) {
+      let mg = this.synMag[k], ph = outPh[k];
+      re[k] = mg * Math.cos(ph); im[k] = mg * Math.sin(ph);
+      // nefes: kadın seslerinde daha belirgin olan hafif hava sesi (yüksek frekanslarda)
+      if (breath > 0) {
+        const f = k * fpb;
+        if (f > 1500) {
+          const w = f > 3500 ? 1 : (f - 1500) / 2000;
+          const nm = breath * 0.35 * w * this.envAt(k / formant), r = Math.random() * TWO_PI;
+          re[k] += nm * Math.cos(r); im[k] += nm * Math.sin(r);
+        }
+      }
     }
     for (let k = M; k < N; k++) { re[k] = 0; im[k] = 0; }
     this.fft.transform(re, im, true);
@@ -270,12 +309,13 @@ class FemaleVoiceProcessor extends AudioWorkletProcessor {
       { name: 'pitch',   defaultValue: 1.5,  minValue: 0.5, maxValue: 2.5, automationRate: 'k-rate' },
       { name: 'formant', defaultValue: 1.16, minValue: 0.7, maxValue: 1.6, automationRate: 'k-rate' },
       { name: 'bypass',  defaultValue: 0,    minValue: 0,   maxValue: 1,   automationRate: 'k-rate' },
-      { name: 'gate',    defaultValue: -52,  minValue: -100, maxValue: 0,  automationRate: 'k-rate' }
+      { name: 'gate',    defaultValue: -52,  minValue: -100, maxValue: 0,  automationRate: 'k-rate' },
+      { name: 'breath',  defaultValue: 0.25, minValue: 0,   maxValue: 1,   automationRate: 'k-rate' }
     ];
   }
   constructor(){
     super();
-    this.ps = new PitchShifter(2048, 4, sampleRate);
+    this.ps = new PitchShifter(2048, 8, sampleRate);
     this.g = 0; this.hold = 0; this.blocks = 0; this.peakDb = -100;
     this.holdSamples = Math.round(0.25 * sampleRate);
   }
@@ -297,6 +337,7 @@ class FemaleVoiceProcessor extends AudioWorkletProcessor {
     } else {
       this.ps.pitch = params.pitch[0];
       this.ps.formant = params.formant[0];
+      this.ps.breath = params.breath[0];
       this.ps.process(x, o);
     }
     let g = this.g;
@@ -316,7 +357,7 @@ registerProcessor('female-voice', FemaleVoiceProcessor);
 const $ = id => document.getElementById(id);
 const els = {
   mic: $('micSel'), out: $('outSel'), start: $('startBtn'), status: $('status'), meter: $('meter'),
-  pitch: $('pitch'), formant: $('formant'), bright: $('bright'), gate: $('gate'), vol: $('vol'),
+  pitch: $('pitch'), formant: $('formant'), breath: $('breath'), bright: $('bright'), gate: $('gate'), vol: $('vol'),
   ns: $('nsChk'), mon: $('monChk'), bypass: $('bypassChk'), audio: $('outAudio'), outHint: $('outHint')
 };
 
@@ -330,6 +371,7 @@ function updateLabels(){
   $('brightVal').textContent = '+' + els.bright.value + ' dB';
   $('gateVal').textContent = els.gate.value + ' dB';
   $('volVal').textContent = '%' + els.vol.value;
+  $('breathVal').textContent = '%' + els.breath.value;
 }
 function applyParams(){
   updateLabels();
@@ -338,18 +380,19 @@ function applyParams(){
   node.parameters.get('pitch').setValueAtTime(Math.pow(2, semis() / 12), t);
   node.parameters.get('formant').setValueAtTime(parseFloat(els.formant.value) / 100, t);
   node.parameters.get('gate').setValueAtTime(parseFloat(els.gate.value), t);
+  node.parameters.get('breath').setValueAtTime(els.bypass.checked ? 0 : parseFloat(els.breath.value) / 100, t);
   node.parameters.get('bypass').setValueAtTime(els.bypass.checked ? 1 : 0, t);
   shelf.gain.setTargetAtTime(els.bypass.checked ? 0 : parseFloat(els.bright.value), t, 0.05);
   postHP.frequency.setTargetAtTime(els.bypass.checked ? 20 : 140, t, 0.05);
   outGain.gain.setTargetAtTime(parseFloat(els.vol.value) / 100, t, 0.05);
   monGain.gain.setTargetAtTime(els.mon.checked ? 1 : 0, t, 0.05);
 }
-['pitch','formant','bright','gate','vol'].forEach(k => els[k].addEventListener('input', () => { clearPresetSel(); applyParams(); }));
+['pitch','formant','breath','bright','gate','vol'].forEach(k => els[k].addEventListener('input', () => { clearPresetSel(); applyParams(); }));
 ['mon','bypass'].forEach(k => els[k].addEventListener('change', applyParams));
 
 function clearPresetSel(){ document.querySelectorAll('#presets button').forEach(b => b.classList.remove('sel')); }
 document.querySelectorAll('#presets button').forEach(b => b.addEventListener('click', () => {
-  els.pitch.value = b.dataset.p; els.formant.value = b.dataset.f; els.bright.value = b.dataset.b;
+  els.pitch.value = b.dataset.p; els.formant.value = b.dataset.f; els.bright.value = b.dataset.b; els.breath.value = b.dataset.n;
   applyParams(); clearPresetSel(); b.classList.add('sel');
 }));
 
@@ -468,7 +511,7 @@ async function start(){
 
     running = true;
     els.start.textContent = 'Durdur'; els.start.classList.add('on');
-    const latMs = Math.round((1536 / ctx.sampleRate + (ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000);
+    const latMs = Math.round((1792 / ctx.sampleRate + (ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000);
     setStatus('<b>Çalışıyor</b> · ' + ctx.sampleRate + ' Hz · ~' + latMs + ' ms gecikme' + mode);
   } catch (e) {
     console.error(e);
